@@ -1,2 +1,2 @@
-# British hotflashes-project
-Exploring British Hot flash Data once data is clean
+# British not migrant hotflashes
+Exploring British Hot flash Clean Data 
