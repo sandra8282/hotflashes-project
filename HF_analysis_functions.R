@@ -1,37 +1,46 @@
 
 #FUNCTION getmode: Find the mode 
     #Parameters: v - a vector of data
-    #Returns: the mode of the given vector
+    #Returns: the mode of the given vector, the # of times the mode repeated
     getmode <- function(v) {
       uniqv <- unique(v)
-      uniqv[which.max(tabulate(match(v, uniqv)))]
+      mode<-round(uniqv[which.max(tabulate(match(v, uniqv)))], digit=1)
+      repeats<-as.integer(max(tabulate(match(v, uniqv))))
+      return(c(mode, repeats))
     }
 
+#-----------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------
+
 #FUNCTION getsmooth: Smooth each woman's data Using K-smooth Filter
+    #and find a moving average median
 
   #Parameters: 
     # time - a vector that contains time in seconds for each observation
     # measure - a vector that contains the skin conductance observations
   #Returns: 
-    # a data frame with columns "timeID","observed", "fitted.normal". 
+    # a data frame with columns "timeID","observed", "fitted.normal","MA.median"
+    # and "Diff.Zero.Median". 
     # timeID and observed - the time and measure vector we gave to the function  
     # fitted.normal is the fitted values of the ksmooth (gaussian filter)
+    # MA.median is the median from a moving average smooth version of the data
+    # Diff.Zero.Median - median for the points where the first difference is zero
     
     get.smooth<-function(time, measure) {
       filterwoman <- na.omit(data.frame(time,measure))
       filterwoman[,3] <- ksmooth(filterwoman[,1], filterwoman[,2], 
                                  kernel = "normal", bandwidth = 120)[[2]]
-      filterwoman[,4] <- rep(median(filterwoman[,3]), nrow(filterwoman))
-      colnames(filterwoman)<-c("timeID","observed", "fitted.normal", "median")# "ma.flat"
-      # Uncomment following if we want to use MA filters
-      # filterwoman[,5] <- filter(filterwoman[,2], sides=2, filter=rep(1/10800,10800), 
-      #                           method = "convolution")
-      
-      
-      filterwoman<-na.omit(filterwoman)
+      filterwoman[,4] <- rep(median(na.omit(filterwoman[,3])), nrow(filterwoman))
+      d<-diff(filterwoman[,3])
+      flat.umho<-filterwoman[which(d==0),3]
+      filterwoman[,5]<-rep(median(flat.umho), nrow(filterwoman))
+      colnames(filterwoman)<-c("timeID","observed", "fitted.normal", "MA.median", "Diff.Zero.Median")
       return(filterwoman)
     }
 
+#-----------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------
+    
 #FUNCTION reduce: Reduces one column of data with 1 obs per second to 1 obs per 10 secs 
                 # (the average of 10 seconds of raw data)
 
@@ -49,43 +58,107 @@
         return(temp)
       }
 
-#FUNCTION find.peaks: Find peaks in kmooth curve
 
-    #Parameters: 
-      # filterwoman.list.element is a dataframe with columns 
-      # "timeID","observed","fitted.ma", "ma.flat", "fitted.normal"
-      # observed - the measure vector we gave to the function 
-      # fitted.normal - the fitted values of the gaussian filter (ksmooth)
-    
-    #Returns: either a data frame (if more than 1 peak) or a vector (if only 1 peak) 
-    # columns in data set or vector are: "peak max umho", "peak index", 
-    # "begin index", "end index", "peak begin time", "peak max time", "peak end time"
-    find.peaks<- function(filterwoman.list.element) {   
-        library(pracma)
-        filterwoman<-filterwoman.list.element
-        p<-findpeaks(filterwoman$fitted.normal, minpeakheight=1.1, nups = 6, ndowns = 6,
-                     minpeakdistance = 90, sortstr=FALSE)
-        
-        if (class(p)=="matrix" && nrow(p)>1) 
-        {
-          p <- p[order(p[,2]),]
-        } else {p <- NULL}
-        
-        if (class(p)=="matrix") {
-          peakpts<-as.data.frame(p)
-          peakpts[,5]<-filterwoman[peakpts[,3], 1] #peak begin time
-          peakpts[,6]<-filterwoman[peakpts[,2], 1] #peak max time
-          peakpts[,7]<-filterwoman[peakpts[,4], 1] #peak end time
-          peakpts[,8]<-filterwoman[peakpts[,3], 3] #peak.begin.umho
-          peakpts[,9]<-filterwoman[peakpts[,4], 3] #peak.end.umho
-          colnames(peakpts)<-c("peak.umho", "peak.index", "begin.index",
-                               "end.index", "peak.begin.time", "peak.max.time",
-                               "peak.end.time", "peak.begin.umho", "peak.end.umho")
-          peakpts[,10]<-filterwoman[peakpts[,3], 4] #median of fitted umho 
-          peakpts[,11]<-peakpts$peak.umho - peakpts[,10]
-          notpeak<- which(peakpts$V11<0.5)
-          if (length(notpeak)>0) {peakpts<-peakpts[-notpeak,]}
-          result<-cbind(peakpts[,1], peakpts[,5:9])
-          colnames(result)<-c(colnames(peakpts)[1], colnames(peakpts)[5:9])
-          return(result)} else {return(p)}
-      }  
+#---------------------------------------------------------------------------
+#---------------------------------------------------------------------------
+
+#FUNCTION:Plot data, ksmooth, and peak points given 1) list of data&ksmooth
+      #2) list of peak points for each group (each element in both lists is a woman)
+      #3) the reduced data frame for all women that was used to get data$kmooth list
+#PARAMETERS: filterwoman.list, peak.from.ksmooth, reduced.data
+#RETURNS: plots for each woman
+      
+plot.smooth.and.peaks<-function(filterwoman.list, peak.from.ksmooth, reduced.data) {
+  # filterwoman.list<-BM.filterwoman.list
+  # peak.from.ksmooth<-BM.peak.from.ksmooth
+  # reduced.data<-reduced.BM
+  plots<-list()
+  library(gridExtra)
+  library(Rmisc)
+  library(ggplot2)
+  for (i in 1:length(filterwoman.list)) {
+    if (class(peak.from.ksmooth[[i]])=="data.frame"&&nrow(peak.from.ksmooth[[i]]>1)) {
+      plots[[i]]<-
+        ggplot(data=filterwoman.list[[i]], aes(x=timeID/3600, y=observed)) +
+        theme_bw() + geom_line(colour="grey") +
+        geom_line(data=filterwoman.list[[i]], aes(x=timeID/3600,y=fitted.normal),
+                  colour="black") +
+        # geom_line(data=filterwoman.list[[i]], aes(x=timeID/3600,y=hourly.median),
+        #          colour="blue") +      
+        # geom_line(data=filterwoman.list[[i]], aes(x=timeID/3600,y=ma.flat),
+        #     colour="green") +
+        geom_point(data=peak.from.ksmooth[[i]], aes(x = peak.max.time/3600,
+                                                    y = peak.umho, colour = "red")) +
+        geom_point(data=peak.from.ksmooth[[i]], aes(x = peak.begin.time/3600,
+                                             y = peak.begin.umho, colour = "green")) +
+        geom_point(data=peak.from.ksmooth[[i]], aes(x = peak.end.time/3600,
+                                 y = peak.end.umho, colour = "blue")) +
+        labs(x = "", y = "") +
+        ggtitle(colnames(reduced.data)[i+1]) +
+        theme(legend.position="none")
+    } else {
+      plots[[i]]<-
+        ggplot(data=filterwoman.list[[i]], aes(x=timeID/3600, y=observed)) +
+        theme_bw() + geom_line(colour="grey") +
+        geom_line(data=filterwoman.list[[i]], aes(x=timeID/3600,y=fitted.normal),
+                  colour="black") +
+        # geom_line(data=filterwoman.list[[i]], aes(x=timeID/3600,y=hourly.median),
+        #           colour="blue") +        
+        labs(x = "", y = "") +
+        ggtitle(colnames(reduced.data)[i+1]) +
+        theme(legend.position="none")
+      
+    }
+  }
+  return(plots)
+}
+
+
+#--------------
+#BINNED MODES FUNCTION
+get.binned.modes<-function(filterwoman){
+  max.fw<-max(filterwoman$fitted.normal)
+  rounded.down.min<-floor(min(filterwoman$fitted.normal))
+  split.umho<-seq(rounded.down.min, max.fw+0.4, by=0.2) 
+  split.list<-list()
+  for (n in 1:(length(split.umho)-1)) {
+    split.list[[n]]<-filterwoman[which(filterwoman$fitted.normal<split.umho[n+1]),]
+    split.list[[n]]<-split.list[[n]][which(split.list[[n]]$fitted.normal>split.umho[n]),]
+  }
+  nrow.vect<-unlist(lapply(split.list, function(x) nrow(x)))
+  max.nrow<-max(nrow.vect)
+  max.obs<-which(nrow.vect==max.nrow)
+  if (length(max.obs)>1) {max.obs<-min(max.obs)}
+  best.mode.data=split.list[[max.obs]]
+  best.mode<-getmode(best.mode.data$fitted.normal)
+  # plot(filterwoman$timeID, filterwoman$fitted.normal)
+  # lines(filterwoman$timeID, rep(best.mode[1], length(filterwoman$timeID)), col="blue")
+  return(best.mode[1])
+}
+
+#---------------------------------------------------------------------------
+#---------------------------------------------------------------------------
+
+plot.STATS<-function(filterwoman.list, summary.stats, reduced.data) {
+  plots.of.stats<-list()
+  library(gridExtra)
+  library(Rmisc)
+  library(ggplot2)
+  names<-colnames(reduced.data)
+  for (i in 1:length(filterwoman.list)) {
+  plots.of.stats[[i]]<-
+     plot(filterwoman.list[[i]]$timeID/3600, 
+          filterwoman.list[[i]]$fitted.normal, 
+          ylab="Umho",xlab="Time (Hrs)", type = "l", main = names[i+1])
+     lines(filterwoman.list[[i]]$timeID/3600, 
+           rep(summary.stats[i,1], length(filterwoman.list[[i]]$timeID)), col="blue")
+     lines(filterwoman.list[[i]]$timeID/3600, 
+           rep(summary.stats[i,2], length(filterwoman.list[[i]]$timeID)), col="red")
+     lines(filterwoman.list[[i]]$timeID/3600, 
+           rep(summary.stats[i,3], length(filterwoman.list[[i]]$timeID)), col="green")
+     lines(filterwoman.list[[i]]$timeID/3600, 
+           rep(summary.stats[i,4], length(filterwoman.list[[i]]$timeID)), col="purple")
+  }
+  return(plots.of.stats)
+}
+

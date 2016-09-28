@@ -2,26 +2,25 @@
 title: "HotFlash reduced data"
 author: "Sandra Castro-Pearson"
 date: "August 7, 2016"
-output: html_document
+output: pdf_document
 ---
 
 ```{r setup_dataload, include=FALSE, cache=TRUE}
-knitr::opts_chunk$set(echo = FALSE)
-knitr::opts_chunk$set(message = FALSE)
-knitr::opts_chunk$set(warning = FALSE)
 library(stats)
 library(ggplot2)
-library(smoother)
 
 setwd("c:/Users/pearsons0519/Documents/Summer Research/HFcsv's")
 file.names<-(Sys.glob("*.csv"))
 
 #BRITISH NOT MIGRANT DATA
-BNM<-read.csv(file.names[2], stringsAsFactors = TRUE, header = TRUE)
-#delete women who were outliers (no umho above 1 ever recorded OR umho above 20 issues)
-MAXIMUM<-apply(BNM[,-1], 2, function(ncolumn) max(na.omit(ncolumn)))
-outindexes<-c((which(MAXIMUM<1)+1), which(MAXIMUM>20)+1)
-BNM2<-BNM[,-outindexes]
+BM<-read.csv(file.names[1], stringsAsFactors = TRUE, header = TRUE)
+BNM2<-read.csv(file.names[2], stringsAsFactors = TRUE, header = TRUE)
+
+#delete women who were outliers in BNM (no umho above 1 ever recorded OR umho above 20 issues)
+MAXIMUM<-apply(BNM2[,-1], 2, function(ncolumn) max(na.omit(ncolumn)))
+outindexes<-c(which(MAXIMUM>20))
+
+BNM2<-BNM2[,-outindexes]
 ```
 
 ```{r run_fcts_on_data, echo = FALSE, message = FALSE, warning = FALSE, fig.height=3}
@@ -29,66 +28,102 @@ setwd("c:/Users/pearsons0519/Documents/Summer Research/HFcsv's")
 source("HF_analysis_functions.R")
 
 #reduce data from 1 obs/sec to 1 obs every 10sec where the obs is the average of 10sec
-index<-seq(from=1,to=nrow(BNM2),by=10)
-reduced.BNM<-apply(BNM2[,2:ncol(BNM2)], 2, function(x) reduction(x, index))
-reduced.BNM<-data.frame(cbind(BNM2[index,1], reduced.BNM))
+index.list<-list(seq(from=1,to=nrow(BM),by=10), seq(from=1,to=nrow(BNM2),by=10))
+
+reduced.BM<-apply(BM[,2:ncol(BM)], 2, function(x) reduction(x, index.list[[1]]))
+reduced.BM<-data.frame(cbind(BM[index.list[[1]],1], reduced.BM))
+reduced.BNM<-apply(BNM2[,2:ncol(BNM2)], 2, function(x) reduction(x, index.list[[2]]))
+reduced.BNM<-data.frame(cbind(BNM2[index.list[[2]],1], reduced.BNM))
 
 #Create smooth version of data
-filterwoman.list<-apply(reduced.BNM[2:ncol(reduced.BNM)], 2, function(x) get.smooth(reduced.BNM[,1],x))
+BM.filterwoman.list<-apply(reduced.BM[2:ncol(reduced.BM)], 2, function(x) get.smooth(reduced.BM[,1],x))
+BNM.filterwoman.list<-apply(reduced.BNM[2:ncol(reduced.BNM)], 2, function(x) get.smooth(reduced.BNM[,1],x))
 
+```
+
+
+```{r stats_tables_BNM, echo = FALSE, message = FALSE, warning = FALSE, fig.height=3}
+## Summary Statistics for British Non-Migrant Women
+# setwd("c:/Users/pearsons0519/Documents/Summer Research/HFcsv's")
+# source("HF_analysis_functions.R")
+# library(knitr)
+# 
+# MEAN<-lapply(BNM.filterwoman.list, function(y) mean(na.omit(y[,3])))
+# MEAN<-unlist(MEAN)
+# MAXIMUM<-lapply(BNM.filterwoman.list, function(y) max(na.omit(y[,3])))
+# MAXIMUM<-unlist(MAXIMUM)
+# MEDIAN<-lapply(BNM.filterwoman.list, function(x) median(x[,3]))
+# MEDIAN<-unlist(MEDIAN)
+# BINNED.MODE<-lapply(BNM.filterwoman.list, function(x) get.binned.modes(x))
+# BINNED.MODE<-unlist(BINNED.MODE)
+# 
+# mysummary<-data.frame(MAXIMUM, MEAN, MEDIAN, BINNED.MODE)
+# write.csv(mysummary, file = "British.Not.Migrant.SummarySTATS.csv")
+```
+
+
+```{r stats_tables_BM, echo = FALSE, message = FALSE, warning = FALSE, fig.height=3}
+## Summary Statistics for British Migrant Women
+# setwd("c:/Users/pearsons0519/Documents/Summer Research/HFcsv's")
+# source("HF_analysis_functions.R")
+# library(knitr)
+# 
+# MEAN<-lapply(BM.filterwoman.list, function(y) mean(na.omit(y[,3])))
+# MEAN<-unlist(MEAN)
+# MAXIMUM<-lapply(BM.filterwoman.list, function(y) max(na.omit(y[,3])))
+# MAXIMUM<-unlist(MAXIMUM)
+# MEDIAN<-lapply(BM.filterwoman.list, function(x) median(x[,3]))
+# MEDIAN<-unlist(MEDIAN)
+# BINNED.MODE<-lapply(BM.filterwoman.list, function(x) get.binned.modes(x)) 
+# BINNED.MODE<-unlist(BINNED.MODE)
+# 
+# mysummary2<-data.frame(MAXIMUM, MEAN, MEDIAN, BINNED.MODE)
+# write.csv(mysummary2, file = "British.Migrant.SummarySTATS.csv")
+```
+
+
+
+```{r stats_plots, echo = FALSE, message = FALSE, warning = FALSE, fig.height=4}
+##Plots of Statistics against clean data 
+# blue - Maximum  
+# red - Mean  
+# green - Median  
+# purple- Binned mode  
+# setwd("c:/Users/pearsons0519/Documents/Summer Research/HFcsv's")
+# source("HF_analysis_functions.R")
+# plot.STATS(BNM.filterwoman.list, mysummary, reduced.BNM)
+# plot.STATS(BM.filterwoman.list, mysummary2, reduced.BM)
+```
+
+
+```{r find_peaks, include = FALSE, message = FALSE, warning = FALSE}
 #Find peaks
-peak.from.ksmooth<-lapply(filterwoman.list, function(x) find.peaks(x))
+setwd("c:/Users/pearsons0519/Documents/Summer Research/HFcsv's")
+source("findpeaks.R")
+BM.peak.from.ksmooth<-lapply(BM.filterwoman.list, function(x) find.peaks(x))
+BNM.peak.from.ksmooth<-lapply(BNM.filterwoman.list, function(x) find.peaks(x))
+# BM.peak.from.ksmooth=list()
+# for (bmcount in 1:length(BM.filterwoman.list)) {
+#   BM.peak.from.ksmooth[[bmcount]]<-find.peaks(BM.filterwoman.list[[bmcount]])
+# }
+# 
+
+
+setwd("c:/Users/pearsons0519/Documents/Summer Research/HFcsv's")
+source("HF_analysis_functions.R")
+plots<-plot.smooth.and.peaks(BM.filterwoman.list,BM.peak.from.ksmooth,reduced.BM)
+
+
 
 #Create time series objects
-BNM.ts<-list()
-for (j in 1:length(filterwoman.list)) {
-  BNM.ts[[j]]<-ts(data = filterwoman.list[[j]][,3], start = filterwoman.list[[j]][1,1],
-                  end = filterwoman.list[[j]][nrow(filterwoman.list[[j]]),1])
-}
+# BNM.ts<-list()
+# for (j in 1:length(filterwoman.list)) {
+#   BNM.ts[[j]]<-ts(data = filterwoman.list[[j]][,3], start = filterwoman.list[[j]][1,1],
+#                   end = filterwoman.list[[j]][nrow(filterwoman.list[[j]]),1])
+# }
+
 
 ```
-
-
-```{r setup_plots, echo = FALSE, message = FALSE, warning = FALSE, fig.height=6}
-plots<-list()
-library(gridExtra)
-library(Rmisc)
-library(ggplot2)
-for (i in 1:length(filterwoman.list)) 
-{
-if (class(peak.from.ksmooth[[i]])=="data.frame"&&nrow(peak.from.ksmooth[[i]])) {
-    plots[[i]]<-
-        ggplot(data=filterwoman.list[[i]], aes(x=timeID/3600, y=observed)) +
-        theme_bw() + geom_line(colour="grey") +
-        geom_line(data=filterwoman.list[[i]], aes(x=timeID/3600,y=fitted.normal),
-            colour="black") +
-        geom_line(data=filterwoman.list[[i]], aes(x=timeID/3600,y=median),
-            colour="blue") +      
-        # geom_line(data=filterwoman.list[[i]], aes(x=timeID/3600,y=ma.flat),
-        #     colour="green") +
-        geom_point(data=peak.from.ksmooth[[i]], aes(x = peak.max.time/3600,
-            y = peak.umho, colour = "maroon")) +
-        # geom_point(data=peak.from.ksmooth[[i]], aes(x = peak.begin.time/3600,
-        #     y = peak.begin.umho, colour = "blue")) +
-        # geom_point(data=peak.from.ksmooth[[i]], aes(x = peak.end.time/3600,
-        #     y = peak.end.umho, colour = "yellow")) +
-        labs(x = "", y = "") +
-        ggtitle(colnames(BNM2)[i+1]) +
-        theme(legend.position="none")
-   } else
-     {
-    plots[[i]]<-
-      ggplot(data=filterwoman.list[[i]], aes(x=timeID/3600,y=observed)) + 
-      theme_bw() + geom_line(colour="grey") + 
-      geom_line(data=filterwoman.list[[i]], aes(x=timeID/3600,y=fitted.normal),
-            colour="black")  + 
-      geom_line(data=filterwoman.list[[i]], aes(x=timeID/3600,y=median),
-            colour="blue") +        
-      theme(legend.position="none")+ ggtitle(colnames(BNM2)[i+1])
-    }
-}
-```
-
 
 ```{r output_plots, echo = FALSE, message = FALSE, warning = FALSE, fig.height=2}
 plots[[1]]
@@ -118,14 +153,21 @@ plots[[24]]
 plots[[25]]
 plots[[26]]
 plots[[27]]
-
-for (t in 1:length(peak.from.ksmooth)) {
-  library(knitr)
-  if (class(peak.from.ksmooth[[t]])=="NULL") print("No peaks found") else 
-    print(kable(peak.from.ksmooth[[t]]))
-  }
+plots[[28]]
+plots[[29]]
+plots[[30]]
+plots[[31]]
+plots[[32]]
+plots[[33]]
 ```
 
-```{r autocorrelation_plots, include=FALSE, fig.height=6, fig.width=12}
-lapply(BNM.ts, function(x) acf(x))
+```{r peak_tables, echo=FALSE, fig.height=6, fig.width=12}
+# for (t in 1:length(BM.peak.from.ksmooth)) {
+#   library(knitr)
+#   if (class(BM.peak.from.ksmooth[[t]])=="NULL") print("No peaks found") else
+#     peak.table<-na.omit(BM.peak.from.ksmooth[[t]])
+#     print(kable(peak.table))
+# }
+BM.peak.from.ksmooth
+# lapply(BNM.ts, function(x) acf(x))
 ```
